@@ -3,11 +3,14 @@
 #include <vector>
 #include <unordered_map>
 #include <tuple>
+#include <utility>
+#include <queue>
+
 
 class Player {
 private:
     int speed;
-    std::vector<int> position;
+    std::pair<float, float> position;
     int size;
 
 public:
@@ -18,10 +21,10 @@ public:
         this->speed = new_speed;
     }
 
-    std::vector<int> get_position() {
+    std::pair<float, float> get_position() {
         return this->position;
     }
-    void set_position(std::vector<int> new_pos) {
+    void set_position(std::pair<float, float> new_pos) {
         this->position = new_pos;
     }
 
@@ -33,15 +36,15 @@ public:
     }
 
     void move(sf::RenderWindow& window, std::vector<int> move_dir, std::vector<std::vector<int>> map, int tile_size) {
-        std::vector<int> pos = this->get_position();
-        int pos_x = pos[0];
-        int pos_y = pos[1];
+        std::pair<float, float> pos = this->get_position();
+        float pos_x = pos.first;
+        float pos_y = pos.second;
         int speed = this->speed;
 
-        int player_left_chor = pos_x / tile_size;
-        int player_right_chor = (pos_x + 2*this->get_size()) / tile_size;
-        int player_top_chor = pos_y / tile_size;
-        int player_bottom_chor = (pos_y + 2*this->get_size()) / tile_size;
+        int player_left_chor =int( pos_x / tile_size);
+        int player_right_chor = int((pos_x + 2*this->get_size()) / tile_size);
+        int player_top_chor = int(pos_y / tile_size);
+        int player_bottom_chor = int((pos_y + 2*this->get_size()) / tile_size);
 
         if (move_dir[0] == 1) {
             pos_y -= speed;
@@ -76,16 +79,110 @@ public:
             }
         }
 
-        std::vector<int> new_pos = { pos_x, pos_y };
+        std::pair<float, float> new_pos = { pos_x, pos_y };
         this->set_position(new_pos);
     }
+
+
+    void move_to(std::pair<int, int> aim, std::vector<std::vector<int>> map) {
+        std::pair<float, float> pos = this->get_position();
+        int speed = this->get_speed();
+        float distance = float(std::sqrt(std::pow(aim.first - pos.first, 2) + std::pow(aim.second - pos.second, 2)));
+        
+        if (distance < speed) {
+            this->set_position(aim);
+        }
+        else {
+            float aim_cos = (aim.first - pos.first) / distance;
+            float aim_sin = (aim.second - pos.second) / distance;
+
+            float new_pos_x = aim_cos * speed + pos.first;
+            float new_pos_y = aim_sin * speed + pos.second;
+
+            std::pair<float, float> new_pos = { new_pos_x, new_pos_y };
+            this->set_position(new_pos);
+        }
+    
+    }
+
+
 };
+
+bool check_line_collision(std::pair<float, float> point_1, std::pair<float, float> point_2, std::vector<std::vector<int>> map, int tile_size) {
+    float distance = float(std::sqrt(std::pow(point_1.first - point_2.first, 2) + std::pow(point_1.second - point_2.second, 2)));
+    float cos = (point_2.first - point_1.first) / distance;
+    float sin = (point_2.second - point_1.second) / distance;
+
+    /*
+    Здесь надо потренировать воображение, так как вертикальная ось координат идёт сверху вниз, а не снизу вверх
+    Из-за этого положительные значения синуса находятся внизу, а отрицательные вверху, а не наоборот (как в курсе геометрии)
+    */
+
+    if (cos >= 0) {
+        int left_border = int(point_1.first / tile_size);
+        int right_border = int(point_2.first / tile_size) + 1;
+
+        for (int i = left_border+1; i < right_border; i++) {
+            float i_y_chor = sin * (i*tile_size - point_1.first)/cos + point_1.second;
+            int i_top = int(i_y_chor / tile_size);
+            if (map[i_top][i]) {
+                return true;
+            }
+        }
+    }
+    else if (cos < 0) {
+        int right_border = int(point_1.first / tile_size) + 1;
+        int left_border = int(point_2.first / tile_size);
+
+        for (int i = right_border - 1; i > left_border; i--) {
+            float i_y_chor = sin * (i * tile_size - point_1.first) / cos + point_1.second;
+            int i_top = int(i_y_chor / tile_size);
+            if (map[i_top][i]) {
+                return true;
+            }
+        }
+    }
+    if (sin >= 0) {
+        int top_border = int(point_1.second / tile_size);
+        int bottom_border = int(point_2.second / tile_size) + 1;
+
+        for (int i = top_border + 1; i < bottom_border; i++) {
+            float i_x_chor = cos * (i * tile_size - point_1.second) / sin + point_1.first;
+            int i_left = int(i_x_chor / tile_size);
+            if (map[i][i_left]) {
+                return true;
+            }
+        }
+    }
+    else if (sin < 0) {
+        int bottom_border = int(point_1.second / tile_size);
+        int top_border = int(point_2.second / tile_size) + 1;
+
+        for (int i = bottom_border + 1; i > top_border; i--) {
+            float i_x_chor = cos * (i * tile_size - point_1.second) / sin + point_1.first;
+            int i_left = int(i_x_chor / tile_size);
+            if (map[i][i_left]) {
+                return true;
+            }
+        }
+    }
+    return false;
+    /*
+    В этом кусочке скрыта маленькая неточность:
+    Мы имеем координаты левого-верхнего угла перемещаемого объекта, и смотрим, чтобы именно левый-верхний угол не пересекался
+    со стенами. Правый-нижний угол без проблем сможет пройти сквозь стены
+
+    К сожалению, я временно оставлю её неисправленной, так как ПО без багов - не ПО :)
+    */
+}
+
+
 
 
 class Adopted_Monster {
 private:
     int speed;
-    std::vector<int> position;
+    std::pair<int, int> position;
     int size;
 
 public:
@@ -96,10 +193,10 @@ public:
         this->speed = new_speed;
     }
 
-    std::vector<int> get_position() {
+    std::pair<int, int> get_position() {
         return this->position;
     }
-    void set_position(std::vector<int> new_pos) {
+    void set_position(std::pair<int, int> new_pos) {
         this->position = new_pos;
     }
 
@@ -110,35 +207,26 @@ public:
         this->size = new_size;
     }
 
-    void move_to(sf::RenderWindow& window, std::vector<int> aim, std::vector<std::vector<int>> map, int tile_size) {
-        std::vector<int> pos = this->get_position();
-        
-        // Задаём базовые хранилища информации
-        std::vector<std::vector<int>> queue = {pos};
-        std::unordered_map<std::vector<int>, std::vector<int>> child_parent;
-        std::vector<std::vector<int>> result_way;
-
-        // Ищем цель
-        int point_num = 0;
-        while (true) {
-            //std::pair<int, int> actual_point = queue[point_num];
-            std::vector<int> actual_point = queue[point_num];
-        }
-
-
-
-    }
+    
 };
 
-
-
+void draw_way(sf::RenderWindow& window, std::vector<std::pair<float, float>> way) {
+    for (int cell_num = 0; cell_num < way.size() - 1; cell_num++) {
+        sf::Vertex step_line[] = {
+            sf::Vertex(sf::Vector2f(way[cell_num].first, way[cell_num].second), sf::Color::Blue),
+            sf::Vertex(sf::Vector2f(way[cell_num+1].first, way[cell_num+1].second), sf::Color::Blue)
+        };
+        // step_line->color = sf::Color::Blue;
+        window.draw(step_line, 2, sf::Lines);
+    }
+}
 
 
 void draw_map(
     sf::RenderWindow& window,
     std::vector<std::vector<int>> map,
     float tile_size,
-    std::vector<int> pl_pos
+    std::pair<float, float> pl_pos
 ) {
     int size_x = map[0].size();
     int size_y = map.size();
@@ -157,7 +245,7 @@ void draw_map(
             else if (map[chor_y][chor_x] == 0) {
                 rect.setFillColor(sf::Color::Yellow);
             }
-            rect.setPosition(tile_size * chor_x - pl_pos[0] + width/2, tile_size * chor_y - pl_pos[1] + height/2);
+            rect.setPosition(tile_size * chor_x - pl_pos.first + width/2, tile_size * chor_y - pl_pos.second + height/2);
             window.draw(rect);
         }
     }
@@ -176,7 +264,7 @@ int main()
 
     int speed = 3;
 
-    std::vector<int> pos = { win_width / 2, win_height / 2 };
+    std::pair<float, float> pos = { win_width / 2, win_height / 2 };
     std::vector<int> move_dir = { 0, 0, 0, 0 };
 
     int tile_size = 80;
@@ -208,8 +296,11 @@ int main()
     pl.set_speed(speed);
     pl.set_size(20);
 
+    std::vector<std::pair<float, float>> way = { {1, 1}, {2, 2}, {2, 3} };
+    std::pair<float, float> aim = { 0, 0 };
+
     sf::CircleShape shape(pl.get_size());
-    shape.setPosition(pos[0], pos[1]);
+    shape.setPosition(pos.first, pos.second);
     shape.setFillColor(sf::Color::Magenta);
 
     while (window.isOpen())
@@ -256,23 +347,35 @@ int main()
 
             else if (event.type == sf::Event::MouseButtonReleased) {
                 sf::Vector2i mouse_pos = sf::Mouse::getPosition(window);
-                std::vector<int> player_pos = pl.get_position();
-                int new_player_x = mouse_pos.x + player_pos[0] - win_width / 2 - pl.get_size();
-                int new_player_y = mouse_pos.y + player_pos[1] - win_height / 2 - pl.get_size();
-                std::vector<int> new_pos = { new_player_x, new_player_y };
-                pl.set_position(new_pos);
+                std::pair<float, float> player_pos = pl.get_position();
+                float aim_x = mouse_pos.x + player_pos.first - win_width / 2;
+                float aim_y = mouse_pos.y + player_pos.second - win_height / 2;
+                aim = { aim_x, aim_y };
+
+                if (check_line_collision(player_pos, aim, map, tile_size)) {
+                    aim = { 0, 0 };
+                }
+                
             }
 
         }
 
         pl.move(window, move_dir, map, tile_size);
 
-        std::vector<int> pos = pl.get_position();
+        std::pair<float, float> pos = pl.get_position();
 
         draw_map(window, map, tile_size, pl.get_position());
+        
+        if (pos == aim) {
+            aim.first = 0;
+            aim.second = 0;
+        }
+        if (aim.first != 0 || aim.second != 0) {
+            pl.move_to(aim, map);
+        }
+
         window.draw(shape);
         window.display();
     }
     return 0;
 }
-
