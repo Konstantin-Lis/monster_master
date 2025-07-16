@@ -84,27 +84,6 @@ public:
     }
 
 
-    void move_to(std::pair<int, int> aim, std::vector<std::vector<int>> map) {
-        std::pair<float, float> pos = this->get_position();
-        int speed = this->get_speed();
-        float distance = float(std::sqrt(std::pow(aim.first - pos.first, 2) + std::pow(aim.second - pos.second, 2)));
-        
-        if (distance < speed) {
-            this->set_position(aim);
-        }
-        else {
-            float aim_cos = (aim.first - pos.first) / distance;
-            float aim_sin = (aim.second - pos.second) / distance;
-
-            float new_pos_x = aim_cos * speed + pos.first;
-            float new_pos_y = aim_sin * speed + pos.second;
-
-            std::pair<float, float> new_pos = { new_pos_x, new_pos_y };
-            this->set_position(new_pos);
-        }
-    
-    }
-
 
 };
 
@@ -167,13 +146,6 @@ bool check_line_collision(std::pair<float, float> point_1, std::pair<float, floa
         }
     }
     return false;
-    /*
-    В этом кусочке скрыта маленькая неточность:
-    Мы имеем координаты левого-верхнего угла перемещаемого объекта, и смотрим, чтобы именно левый-верхний угол не пересекался
-    со стенами. Правый-нижний угол без проблем сможет пройти сквозь стены
-
-    К сожалению, я временно оставлю её неисправленной, так как ПО без багов - не ПО :)
-    */
 }
 
 
@@ -182,7 +154,7 @@ bool check_line_collision(std::pair<float, float> point_1, std::pair<float, floa
 class Adopted_Monster {
 private:
     int speed;
-    std::pair<int, int> position;
+    std::pair<float, float> position;
     int size;
 
 public:
@@ -193,7 +165,7 @@ public:
         this->speed = new_speed;
     }
 
-    std::pair<int, int> get_position() {
+    std::pair<float, float> get_position() {
         return this->position;
     }
     void set_position(std::pair<int, int> new_pos) {
@@ -207,27 +179,34 @@ public:
         this->size = new_size;
     }
 
-    
-};
+    void move_to(std::pair<float, float> aim, std::vector<std::vector<int>> map) {
+        std::pair<float, float> pos = this->get_position();
+        int speed = this->get_speed();
+        float distance = float(std::sqrt(std::pow(aim.first - pos.first, 2) + std::pow(aim.second - pos.second, 2)));
 
-void draw_way(sf::RenderWindow& window, std::vector<std::pair<float, float>> way) {
-    for (int cell_num = 0; cell_num < way.size() - 1; cell_num++) {
-        sf::Vertex step_line[] = {
-            sf::Vertex(sf::Vector2f(way[cell_num].first, way[cell_num].second), sf::Color::Blue),
-            sf::Vertex(sf::Vector2f(way[cell_num+1].first, way[cell_num+1].second), sf::Color::Blue)
-        };
-        // step_line->color = sf::Color::Blue;
-        window.draw(step_line, 2, sf::Lines);
+        if (distance < speed) {
+            this->set_position(aim);
+        }
+        else {
+            float aim_cos = (aim.first - pos.first) / distance;
+            float aim_sin = (aim.second - pos.second) / distance;
+
+            float new_pos_x = aim_cos * speed + pos.first;
+            float new_pos_y = aim_sin * speed + pos.second;
+
+            std::pair<float, float> new_pos = { new_pos_x, new_pos_y };
+            this->set_position(new_pos);
+        }
     }
-}
+};
 
 
 void draw_map(
     sf::RenderWindow& window,
     std::vector<std::vector<int>> map,
     float tile_size,
-    std::pair<float, float> pl_pos
-) {
+    std::pair<float, float> pl_pos)
+{
     int size_x = map[0].size();
     int size_y = map.size();
 
@@ -250,8 +229,6 @@ void draw_map(
         }
     }
 }
-
-
 
 
 
@@ -290,18 +267,30 @@ int main()
         {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
         {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1}
     };
+    std::pair<float, float> aim_lt = { 0, 0 };
 
     Player pl;
     pl.set_position(pos);
     pl.set_speed(speed);
     pl.set_size(20);
 
-    std::vector<std::pair<float, float>> way = { {1, 1}, {2, 2}, {2, 3} };
-    std::pair<float, float> aim = { 0, 0 };
+    Adopted_Monster m1;
+    std::pair<float, float> m1_pos = { win_width / 2 + 100, win_height / 2 + 100 };
+    int m1_speed = 7;
+    int m1_size = 30;
+    m1.set_position(m1_pos);
+    m1.set_speed(m1_speed);
+    m1.set_size(m1_size);
 
-    sf::CircleShape shape(pl.get_size());
-    shape.setPosition(pos.first, pos.second);
-    shape.setFillColor(sf::Color::Magenta);
+
+    sf::CircleShape pl_shape(pl.get_size());
+    pl_shape.setPosition(pos.first, pos.second);
+    pl_shape.setFillColor(sf::Color::Magenta);
+    
+    sf::CircleShape m1_shape(m1_size);
+    m1_shape.setPosition(m1_pos.first, m1_pos.second);
+    m1_shape.setFillColor(sf::Color::Green);
+
 
     while (window.isOpen())
     {
@@ -346,14 +335,34 @@ int main()
             }
 
             else if (event.type == sf::Event::MouseButtonReleased) {
-                sf::Vector2i mouse_pos = sf::Mouse::getPosition(window);
-                std::pair<float, float> player_pos = pl.get_position();
-                float aim_x = mouse_pos.x + player_pos.first - win_width / 2;
-                float aim_y = mouse_pos.y + player_pos.second - win_height / 2;
-                aim = { aim_x, aim_y };
+                /*
+                Функция check_line_collision определяет непосредственно пересечения линии,
+                поэтому сверяем все 4 угла начального и конечного положения
+                Иначе может быть "хождение сквозь текстуры"
+                */
 
-                if (check_line_collision(player_pos, aim, map, tile_size)) {
-                    aim = { 0, 0 };
+                sf::Vector2i mouse_pos = sf::Mouse::getPosition(window);
+                int pl_size = pl.get_size();
+                std::pair<float, float> pl_lt_pos = pl.get_position();
+
+                std::pair<float, float> m1_lt_pos = m1.get_position();
+                std::pair<float, float> m1_rt_pos = { m1_lt_pos.first + 2 * m1_size, m1_lt_pos.second };
+                std::pair<float, float> m1_lb_pos = { m1_lt_pos.first, m1_lt_pos.second + 2 * m1_size };
+                std::pair<float, float> m1_rb_pos = { m1_lt_pos.first + 2 * m1_size, m1_lt_pos.second + 2 * m1_size };
+
+                float aim_center_x = mouse_pos.x + pl_lt_pos.first - win_width / 2;
+                float aim_center_y = mouse_pos.y + pl_lt_pos.second - win_height / 2;
+                aim_lt = { aim_center_x - m1_size, aim_center_y - m1_size };
+
+                std::pair<float, float> aim_rt = { aim_center_x + pl_size, aim_center_y - pl_size };
+                std::pair<float, float> aim_lb = { aim_center_x - pl_size, aim_center_y + pl_size };
+                std::pair<float, float> aim_rb = { aim_center_x + pl_size, aim_center_y + pl_size };
+
+                if (check_line_collision(m1_lt_pos, aim_lt, map, tile_size) ||
+                    check_line_collision(m1_rt_pos, aim_rt, map, tile_size) ||
+                    check_line_collision(m1_lb_pos, aim_lb, map, tile_size) ||
+                    check_line_collision(m1_rb_pos, aim_rb, map, tile_size)) {
+                    aim_lt = { 0, 0 };
                 }
                 
             }
@@ -363,18 +372,24 @@ int main()
         pl.move(window, move_dir, map, tile_size);
 
         std::pair<float, float> pos = pl.get_position();
+        std::pair<float, float> m1_pos = m1.get_position();
 
         draw_map(window, map, tile_size, pl.get_position());
         
-        if (pos == aim) {
-            aim.first = 0;
-            aim.second = 0;
+        if (m1_pos == aim_lt) {
+            aim_lt.first = 0;
+            aim_lt.second = 0;
         }
-        if (aim.first != 0 || aim.second != 0) {
-            pl.move_to(aim, map);
+        if (aim_lt.first != 0 || aim_lt.second != 0) {
+            m1.move_to(aim_lt, map);
         }
 
-        window.draw(shape);
+        float m1_window_x = m1_pos.first - pos.first + win_width / static_cast<float>(2);
+        float m1_window_y = m1_pos.second - pos.second + win_height / static_cast<float>(2);
+        m1_shape.setPosition(m1_window_x, m1_window_y);
+
+        window.draw(pl_shape);
+        window.draw(m1_shape);
         window.display();
     }
     return 0;
