@@ -158,30 +158,57 @@ bool check_line_collision(std::pair<float, float> point_1, std::pair<float, floa
 }
 
 
-bool check_object_collision(
+bool check_object_map_collision(
     std::pair<float, float> point_1,
     std::pair<float, float> point_2,
     std::vector<std::vector<int>> map,
     int tile_size,
     int object_size)
 {
-    std::pair<float, float> point_1_lt_pos = point_1;
-    std::pair<float, float> point_1_rt_pos = { point_1_lt_pos.first + 2 * object_size, point_1_lt_pos.second };
-    std::pair<float, float> point_1_lb_pos = { point_1_lt_pos.first, point_1_lt_pos.second + 2 * object_size };
-    std::pair<float, float> point_1_rb_pos = { point_1_lt_pos.first + 2 * object_size, point_1_lt_pos.second + 2 * object_size };
+    std::pair<float, float> point_1_lt = point_1;
+    std::pair<float, float> point_1_rt = { point_1_lt.first + 2 * object_size, point_1_lt.second };
+    std::pair<float, float> point_1_lb = { point_1_lt.first, point_1_lt.second + 2 * object_size };
+    std::pair<float, float> point_1_rb = { point_1_lt.first + 2 * object_size, point_1_lt.second + 2 * object_size };
 
     std::pair<float, float> point_2_lt = { point_2.first - object_size, point_2.second - object_size };
     std::pair<float, float> point_2_rt = { point_2.first + object_size, point_2.second - object_size };
     std::pair<float, float> point_2_lb = { point_2.first - object_size, point_2.second + object_size };
     std::pair<float, float> point_2_rb = { point_2.first + object_size, point_2.second + object_size };
 
-    if (check_line_collision(point_1_lt_pos, point_2_lt, map, tile_size) ||
-        check_line_collision(point_1_lt_pos, point_2_rt, map, tile_size) ||
-        check_line_collision(point_1_lt_pos, point_2_lb, map, tile_size) ||
-        check_line_collision(point_1_lt_pos, point_2_rb, map, tile_size)) {
+    if (check_line_collision(point_1_lt, point_2_lt, map, tile_size) ||
+        check_line_collision(point_1_lt, point_2_rt, map, tile_size) ||
+        check_line_collision(point_1_lt, point_2_lb, map, tile_size) ||
+        check_line_collision(point_1_lt, point_2_rb, map, tile_size)) {
         return true;
     }
     return false;
+}
+
+
+bool check_object_object_collision(
+    std::pair<float, float> object_1_lt,
+    int object_1_size,
+    std::pair<float, float> object_2_lt,
+    int object_2_size)
+{
+    float object_1_left = object_1_lt.first;
+    float object_1_right = object_1_lt.first + 2* object_1_size;
+    float object_1_top = object_1_lt.second;
+    float object_1_bottom = object_1_lt.second + 2 * object_1_size;
+
+    float object_2_left = object_2_lt.first;
+    float object_2_right = object_2_lt.first + 2* object_2_size;
+    float object_2_top = object_2_lt.second;
+    float object_2_bottom = object_2_lt.second + 2 * object_2_size;
+
+    if (object_1_left > object_2_right ||
+        object_1_top > object_2_bottom ||
+        object_1_right < object_2_left ||
+        object_1_bottom < object_2_top) {
+        return false;
+    }
+
+    return true;
 }
 
 
@@ -190,6 +217,7 @@ private:
     int speed;
     std::pair<float, float> position;
     int size;
+    std::pair<float, float> aim_lt;
 
 public:
     int get_speed() {
@@ -213,6 +241,13 @@ public:
         this->size = new_size;
     }
 
+    std::pair<float, float> get_aim() {
+        return this->aim_lt;
+    }
+    void set_aim(std::pair<int, int> new_aim) {
+        this->aim_lt = new_aim;
+    }
+
     void move_to(std::pair<float, float> aim, std::vector<std::vector<int>> map) {
         std::pair<float, float> pos = this->get_position();
         int speed = this->get_speed();
@@ -232,6 +267,28 @@ public:
             this->set_position(new_pos);
         }
     }
+
+    void move_to_aim(std::vector<std::vector<int>> map) {
+        std::pair<float, float> pos = this->get_position();
+        std::pair<float, float> aim = this->get_aim();
+        int speed = this->get_speed();
+        float distance = float(std::sqrt(std::pow(aim.first - pos.first, 2) + std::pow(aim.second - pos.second, 2)));
+
+        if (distance < speed) {
+            this->set_position(aim);
+        }
+        else {
+            float aim_cos = (aim.first - pos.first) / distance;
+            float aim_sin = (aim.second - pos.second) / distance;
+
+            float new_pos_x = aim_cos * speed + pos.first;
+            float new_pos_y = aim_sin * speed + pos.second;
+
+            std::pair<float, float> new_pos = { new_pos_x, new_pos_y };
+            this->set_position(new_pos);
+        }
+    }
+
 
     std::pair<float, float> count_pos_on_window(sf::RenderWindow& window, std::pair<float, float> pl_pos) {
         std::pair<float, float> pos = this->get_position();
@@ -287,6 +344,18 @@ void draw_map(
 }
 
 
+void reverse_move_dir(std::vector<int>& move_dir) {
+    for (int i = 0; i < 4; i++) {
+        if (move_dir[i] == 0) {
+            move_dir[i] = 1;
+        }
+        else if(move_dir[i] == 1) {
+            move_dir[i] = 0;
+        }
+    }
+}
+
+
 int main()
 {
     sf::RenderWindow window(sf::VideoMode(), L"Новый проект", sf::Style::Fullscreen);
@@ -331,27 +400,30 @@ int main()
 
     Adopted_Monster m1;
     std::pair<float, float> m1_pos = { win_width / 2 + 100, win_height / 2 + 100 };
-    int m1_speed = 7;
+    int m1_speed = 3;
     int m1_size = 30;
     m1.set_position(m1_pos);
     m1.set_speed(m1_speed);
     m1.set_size(m1_size);
+    m1.set_aim(m1_pos);
 
     Adopted_Monster m2;
     std::pair<float, float> m2_pos = { win_width / 2 + 200, win_height / 2 + 200 };
-    int m2_speed = 7;
+    int m2_speed = 3;
     int m2_size = 30;
     m2.set_position(m2_pos);
     m2.set_speed(m2_speed);
     m2.set_size(m2_size);
+    m2.set_aim(m2_pos);
 
     Adopted_Monster m3;
     std::pair<float, float> m3_pos = { win_width / 2 + 300, win_height / 2 + 300 };
-    int m3_speed = 7;
+    int m3_speed = 3;
     int m3_size = 30;
     m3.set_position(m3_pos);
     m3.set_speed(m3_speed);
     m3.set_size(m3_size);
+    m3.set_aim(m3_pos);
 
     std::vector<Adopted_Monster> adopted_monsters = { m1, m2, m3 };
     int active_monster_num = 0;
@@ -429,11 +501,12 @@ int main()
                 std::pair<float, float> monster_lt_pos = adopted_monsters[active_monster_num].get_position();
                 std::pair<float, float> aim_pos = { aim_center_x, aim_center_y };
 
-                if (check_object_collision(monster_lt_pos, aim_pos, map, tile_size, monster_size)) {
+                if (check_object_map_collision(monster_lt_pos, aim_pos, map, tile_size, monster_size)) {
                     aim_lt = { 0, 0 };
                 }
                 else {
-                    aim_lt = { aim_center_x - monster_size, aim_center_y - monster_size};
+                    adopted_monsters[active_monster_num].set_aim({ aim_center_x - monster_size, aim_center_y - monster_size });
+                    //aim_lt = { aim_center_x - monster_size, aim_center_y - monster_size};
                 }
 
 
@@ -442,16 +515,57 @@ int main()
         }
 
         pl.move(window, move_dir, map, tile_size);
+        for (int i = 0; i < adopted_monsters.size(); i++) {
+            if (check_object_object_collision(pl.get_position(), pl.get_size(), adopted_monsters[i].get_position(), adopted_monsters[i].get_size())) {
+                reverse_move_dir(move_dir);
+                pl.move(window, move_dir, map, tile_size);
+                move_dir = { 0, 0, 0, 0 };
+                break;
+            }
+        }
 
         std::pair<float, float> pos = pl.get_position();
         std::pair<float, float> active_monster_pos = adopted_monsters[active_monster_num].get_position();
 
+        /*
         if (active_monster_pos == aim_lt) {
             aim_lt.first = 0;
             aim_lt.second = 0;
         }
         if (aim_lt.first != 0 || aim_lt.second != 0) {
             adopted_monsters[active_monster_num].move_to(aim_lt, map);
+        }
+        */
+
+        for (int i = 0; i < adopted_monsters.size(); i++) {
+            std::pair<float, float> pl_lt_pos = pl.get_position();
+            int pl_size = pl.get_size();
+            std::pair<float, float> monster_lt_pos = adopted_monsters[i].get_position();
+            int monster_size = adopted_monsters[i].get_size();
+
+            adopted_monsters[i].move_to_aim(map);
+            std::pair<float, float> monster_new_pos = adopted_monsters[i].get_position();
+
+            if (check_object_object_collision(monster_new_pos, monster_size, pl_lt_pos, pl_size)) {
+                adopted_monsters[i].set_aim(monster_lt_pos);
+                adopted_monsters[i].move_to(monster_lt_pos, map);
+                continue;
+            }
+            
+            for (int j = 0; j < adopted_monsters.size(); j++) {
+                if (i != j) {
+                    std::pair<float, float> another_monster_lt_pos = adopted_monsters[j].get_position();
+                    int another_monster_size = adopted_monsters[j].get_size();
+
+                    if (check_object_object_collision(monster_new_pos, monster_size, another_monster_lt_pos, another_monster_size)) {
+                        adopted_monsters[i].set_aim(monster_lt_pos);
+                        adopted_monsters[i].move_to(monster_lt_pos, map);
+                        break;
+                    }
+                }
+            }
+            
+
         }
 
         draw_map(window, map, tile_size, pl.get_position());
