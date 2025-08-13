@@ -3,6 +3,11 @@
 #include <vector>
 #include <tuple>
 
+/*
+ВНИМАНИЕ!!!
+Координатой объекта является его левый верхний угол. И относительно него и идут все рассчёты
+*/
+
 
 class Player {
 private:
@@ -84,7 +89,12 @@ public:
 
 };
 
+
+// Проверяет пересечение линии между точками со стенами на карте
 bool check_line_collision(std::pair<float, float> point_1, std::pair<float, float> point_2, std::vector<std::vector<int>> map, int tile_size) {
+    /*
+    Возвращает true, если пересечение есть, и false, если нет
+    */
     int map_x = int(point_1.first / tile_size);
     int map_y = int(point_1.second / tile_size);
     if (map[map_y][map_x]) {
@@ -158,13 +168,17 @@ bool check_line_collision(std::pair<float, float> point_1, std::pair<float, floa
 }
 
 
-bool check_object_map_collision(
+// Проверяет пересечение пути объекта до точки со стенами на карте
+bool check_collisions_on_way(
     std::pair<float, float> point_1,
     std::pair<float, float> point_2,
     std::vector<std::vector<int>> map,
     int tile_size,
     int object_size)
 {
+    /*
+    Возвращает true, если пересечение есть, и false, если нет
+    */
     std::pair<float, float> point_1_lt = point_1;
     std::pair<float, float> point_1_rt = { point_1_lt.first + 2 * object_size, point_1_lt.second };
     std::pair<float, float> point_1_lb = { point_1_lt.first, point_1_lt.second + 2 * object_size };
@@ -185,12 +199,16 @@ bool check_object_map_collision(
 }
 
 
+// Проверяет факт пересечения двух объектов (квадратов, в которые они вписаны)
 bool check_object_object_collision(
     std::pair<float, float> object_1_lt,
     int object_1_size,
     std::pair<float, float> object_2_lt,
     int object_2_size)
 {
+    /*
+    Возвращает true, если пересечение есть, и false, если нет
+    */
     float object_1_left = object_1_lt.first;
     float object_1_right = object_1_lt.first + 2* object_1_size;
     float object_1_top = object_1_lt.second;
@@ -230,7 +248,7 @@ public:
     std::pair<float, float> get_position() {
         return this->position;
     }
-    void set_position(std::pair<int, int> new_pos) {
+    void set_position(std::pair<float, float> new_pos) {
         this->position = new_pos;
     }
 
@@ -305,6 +323,76 @@ public:
 };
 
 
+class Enemy: public Adopted_Monster {
+private:
+    int look_distation;
+    std::pair<float, float> base_position;
+public:
+    int get_look_distation() {
+        return this->look_distation;
+    }
+    void set_look_distation(int new_speed) {
+        this->look_distation = new_speed;
+    }
+
+    std::pair<float, float> get_base_position() {
+        return this->base_position;
+    }
+    void set_base_position(std::pair<float, float> new_base_pos) {
+        this->base_position = new_base_pos;
+    }
+
+
+    // Проверяет, находится ли объъект в зоне видимости
+    bool check_object_near(std::pair<float, float> object_pos, int object_size, std::vector<std::vector<int>> map, int tile_size) {
+        std::pair<float, float> pos_lt = this->get_position();
+        int e_size = this->get_size();
+        int dist = this->get_look_distation();
+
+        std::pair<float, float> object_lt = object_pos;
+        std::pair<float, float> object_rt = { object_lt.first + 2 * object_size, object_lt.second };
+        std::pair<float, float> object_lb = { object_lt.first, object_lt.second + 2 * object_size };
+        std::pair<float, float> object_rb = { object_lt.first + 2 * object_size, object_lt.second + 2 * object_size };
+
+        std::pair<float, float> pos_rt = { pos_lt.first + 2 * e_size, pos_lt.second };
+        std::pair<float, float> pos_lb = { pos_lt.first, pos_lt.second + 2 * e_size };
+        std::pair<float, float> pos_rb = { pos_lt.first + 2 * e_size, pos_lt.second + 2 * e_size };
+
+        // Сначала проверим, есть ли объект в квадрате со стороной 2*радиус_видимости (простые вычисления)
+        if (object_rt.first > pos_lt.first - dist &&
+            object_lt.first < pos_rt.first + dist &&
+            object_lb.second > pos_lt.second - dist &&
+            object_lt.second < pos_lb.second + dist)
+        {
+            // Объект внутри квадрата
+            // Далее проверяем, есть ли он в круге с радиусом радиус_видимости (более сложные вычисления)
+            std::pair<float, float> object_center = { object_lt.first + object_size, object_lt.second + object_size };
+            std::pair<float, float> pos_center = { pos_lt.first + e_size, pos_lt.second + e_size };
+            if ((std::pow(object_center.first - pos_center.first, 2) + std::pow(object_center.second - pos_center.second, 2)) < std::pow(dist + e_size, 2))
+            {
+                // Объект внутри круга
+                // Теперь проверка на коллизии со стенами
+                if (check_line_collision(object_lt, pos_lt, map, tile_size) ||
+                    check_line_collision(object_rt, pos_rt, map, tile_size) ||
+                    check_line_collision(object_lb, pos_lb, map, tile_size) ||
+                    check_line_collision(object_rb, pos_rb, map, tile_size)
+                    )
+                {
+                    // Пересечения со стенами есть, значит, объект вне зоны видимости
+                    return false;
+                }
+                else {
+                    // Пересечений нет, объект видно
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+};
+
+
+
 void draw_object(sf::RenderWindow& window, std::pair<float, float> object_pos, int object_size, sf::Color color) {
     sf::CircleShape obj_shape(object_size);
     obj_shape.setPosition(object_pos.first, object_pos.second);
@@ -356,6 +444,7 @@ void reverse_move_dir(std::vector<int>& move_dir) {
 }
 
 
+
 int main()
 {
     sf::RenderWindow window(sf::VideoMode(), L"Новый проект", sf::Style::Fullscreen);
@@ -363,7 +452,7 @@ int main()
     int win_width = int(window.getSize().x);
     int win_height = int(window.getSize().y);
 
-    int speed = 3;
+    int speed = 5;
 
     std::pair<float, float> pos = { win_width / 2, win_height / 2 };
     std::vector<int> move_dir = { 0, 0, 0, 0 };
@@ -425,11 +514,26 @@ int main()
     m3.set_size(m3_size);
     m3.set_aim(m3_pos);
 
-    std::vector<Adopted_Monster> adopted_monsters = { m1, m2, m3 };
+    std::vector<Adopted_Monster> adopted_monsters = { m1 };
     int active_monster_num = 0;
+
+    Enemy e1;
+    std::pair<float, float> e1_pos = { win_width / 2 + 300, win_height / 2 - 300 };
+    int e1_speed = 1;
+    int e1_size = 30;
+    e1.set_position(e1_pos);
+    e1.set_speed(e1_speed);
+    e1.set_size(e1_size);
+    e1.set_aim(e1_pos);
+    e1.set_look_distation(300);
+    e1.set_base_position(e1_pos);
+
+    std::vector<Enemy> enemies = { e1 };
+
 
     sf::Color active_color = { 255, 127, 0 };
     sf::Color passive_color = { 0, 255, 0 };
+    sf::Color enemy_color = { 0, 0, 255 };
 
     sf::CircleShape pl_shape(pl.get_size());
     pl_shape.setPosition(pos.first, pos.second);
@@ -501,12 +605,11 @@ int main()
                 std::pair<float, float> monster_lt_pos = adopted_monsters[active_monster_num].get_position();
                 std::pair<float, float> aim_pos = { aim_center_x, aim_center_y };
 
-                if (check_object_map_collision(monster_lt_pos, aim_pos, map, tile_size, monster_size)) {
+                if (check_collisions_on_way(monster_lt_pos, aim_pos, map, tile_size, monster_size)) {
                     aim_lt = { 0, 0 };
                 }
                 else {
                     adopted_monsters[active_monster_num].set_aim({ aim_center_x - monster_size, aim_center_y - monster_size });
-                    //aim_lt = { aim_center_x - monster_size, aim_center_y - monster_size};
                 }
 
 
@@ -514,6 +617,7 @@ int main()
 
         }
 
+        // Двигаем игрока + обработка столкновений (пересечений) с приручёнными монстрами
         pl.move(window, move_dir, map, tile_size);
         for (int i = 0; i < adopted_monsters.size(); i++) {
             if (check_object_object_collision(pl.get_position(), pl.get_size(), adopted_monsters[i].get_position(), adopted_monsters[i].get_size())) {
@@ -527,16 +631,7 @@ int main()
         std::pair<float, float> pos = pl.get_position();
         std::pair<float, float> active_monster_pos = adopted_monsters[active_monster_num].get_position();
 
-        /*
-        if (active_monster_pos == aim_lt) {
-            aim_lt.first = 0;
-            aim_lt.second = 0;
-        }
-        if (aim_lt.first != 0 || aim_lt.second != 0) {
-            adopted_monsters[active_monster_num].move_to(aim_lt, map);
-        }
-        */
-
+        // Двигаем приручённых монстров + обработка столкновений (пересечений) с игроком или другими приручёнными монстрами
         for (int i = 0; i < adopted_monsters.size(); i++) {
             std::pair<float, float> pl_lt_pos = pl.get_position();
             int pl_size = pl.get_size();
@@ -564,12 +659,22 @@ int main()
                     }
                 }
             }
-            
-
         }
 
-        draw_map(window, map, tile_size, pl.get_position());
-        for (int i = 0; i < adopted_monsters.size(); i++) {
+        // Проверяем, есть ли рядом игрок
+        if (e1.check_object_near(pos, pl.get_size(), map, tile_size)) {
+            e1.set_aim(pos);
+            enemy_color = { 255, 0, 0 };
+        }
+        if (e1.get_aim() == e1.get_position()) {
+            e1.set_aim(e1.get_base_position());
+            enemy_color = { 0, 0, 255 };
+        }
+        e1.move_to_aim(map);
+
+        
+        draw_map(window, map, tile_size, pl.get_position());  // Отрисовываем карту
+        for (int i = 0; i < adopted_monsters.size(); i++) {  // Отрисовываем приручённых монстров
             std::pair<float, float> monster_win_pos = adopted_monsters[i].count_pos_on_window(window, pos);
             int m_size = adopted_monsters[i].get_size();
 
@@ -580,6 +685,10 @@ int main()
                 draw_object(window, monster_win_pos, m_size, passive_color);
             }
         }
+
+        // Отрисовываем врагов
+        std::pair<float, float> enemy_win_pos = e1.count_pos_on_window(window, pos);
+        draw_object(window, enemy_win_pos, e1.get_size(), enemy_color);
 
         window.draw(pl_shape);
         window.display();
